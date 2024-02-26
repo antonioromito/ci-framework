@@ -17,7 +17,7 @@
     - name: Copy repo-setup generated repos to yum.repos.d directory
       tags:
         - container_img_build
-      become: true
+      become: "{{ not cifmw_build_containers_repo_dir.startswith(ansible_user_dir) }}"
       ansible.builtin.copy:
         remote_src: true
         src: "{{ cifmw_build_containers_repo_dir }}/"
@@ -36,6 +36,7 @@
         name: build_openstack_packages
 
     - name: Copy gating_repo data to repo directory
+      become: "{{ not cifmw_build_containers_repo_dir.startswith(ansible_user_dir) }}"
       tags:
         - container_img_build
       ansible.builtin.copy:

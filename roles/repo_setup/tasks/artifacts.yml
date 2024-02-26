@@ -22,10 +22,11 @@
     _repo_setup_json: "{{ _get_hash.stdout | from_json }}"
   block:
     - name: Dump full hash in delorean.repo.md5 file
+      become: "{{ not cifmw_repo_setup_output.startswith(ansible_user_dir) }}"
       ansible.builtin.copy:
         content: |
           {{ _repo_setup_json['full_hash'] }}
-        dest: "{{ cifmw_repo_setup_basedir }}/artifacts/repositories/delorean.repo.md5"
+        dest: "{{ cifmw_repo_setup_output }}/delorean.repo.md5"
 
     - name: Export hashes facts for further use
       ansible.builtin.set_fact:
