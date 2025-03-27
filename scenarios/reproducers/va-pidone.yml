@@ -70,7 +70,7 @@ cifmw_libvirt_manager_configuration:
         - ocpbm
         - osp_trunk
     ocp_worker:
-      amount: 4
+      amount: 5
       uefi: true
       admin_user: core
       image_local_dir: "{{ cifmw_basedir }}/images/"
