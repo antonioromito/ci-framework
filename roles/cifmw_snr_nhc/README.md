@@ -99,14 +99,26 @@ ansible-playbook your-playbook.yml --tags nhc-cleanup
 ansible-playbook your-playbook.yml --tags cleanup -e cifmw_snr_nhc_cleanup_namespace=true
 ```
 
-#### Using the Example Playbook
+#### Creating a Custom Playbook
 
 ```bash
-# Copy the example playbook
-cp cleanup-example.yml my-cleanup.yml
-
-# Edit variables as needed
-vim my-cleanup.yml
+# Create your own cleanup playbook
+cat > my-cleanup.yml << 'EOF'
+---
+- name: SNR/NHC Cleanup
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    cifmw_snr_nhc_kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/config') }}"
+    cifmw_snr_nhc_namespace: "openshift-workload-availability"
+    cifmw_snr_nhc_cleanup_before_install: false
+    cifmw_snr_nhc_cleanup_namespace: false
+  tasks:
+    - name: Include SNR/NHC role
+      ansible.builtin.include_role:
+        name: cifmw_snr_nhc
+EOF
 
 # Run cleanup only
 ansible-playbook my-cleanup.yml --tags cleanup
