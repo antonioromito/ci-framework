@@ -14,6 +14,12 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 
+- name: Cleanup existing installation (if requested)
+  ansible.builtin.include_tasks: cleanup.yml
+  when: cifmw_snr_nhc_cleanup_before_install | default(false)
+  tags:
+    - cleanup
+
 - name: Create the workload-availability namespace
   kubernetes.core.k8s:
     kubeconfig: "{{ cifmw_snr_nhc_kubeconfig }}"

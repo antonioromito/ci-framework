@@ -1,0 +1,127 @@
+---
+# Copyright Red Hat, Inc.
+# All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may
+# not use this file except in compliance with the License. You may obtain
+# a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+# WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+# License for the specific language governing permissions and limitations
+# under the License.
+
+- name: Remove Node Health Check CR
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cifmw_snr_nhc_kubeconfig }}"
+    state: absent
+    api_version: remediation.medik8s.io/v1alpha1
+    kind: NodeHealthCheck
+    name: nodehealthcheck-sample
+    namespace: "{{ cifmw_snr_nhc_namespace }}"
+  register: nhc_cr_removal
+  failed_when: false
+  tags:
+    - cleanup
+    - nhc-cleanup
+
+- name: Wait for Node Health Check CR to be removed
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cifmw_snr_nhc_kubeconfig }}"
+    api_version: remediation.medik8s.io/v1alpha1
+    kind: NodeHealthCheck
+    name: nodehealthcheck-sample
+    namespace: "{{ cifmw_snr_nhc_namespace }}"
+  register: nhc_cr_check
+  until: nhc_cr_check.resources | length == 0
+  retries: 10
+  delay: 5
+  failed_when: false
+  tags:
+    - cleanup
+    - nhc-cleanup
+
+- name: Remove Node Health Check Subscription
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cifmw_snr_nhc_kubeconfig }}"
+    state: absent
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: node-health-check-operator
+    namespace: "{{ cifmw_snr_nhc_namespace }}"
+  register: nhc_subscription_removal
+  failed_when: false
+  tags:
+    - cleanup
+    - nhc-cleanup
+
+- name: Remove Self Node Remediation Subscription
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cifmw_snr_nhc_kubeconfig }}"
+    state: absent
+    api_version: operators.coreos.com/v1alpha1
+    kind: Subscription
+    name: self-node-remediation-operator
+    namespace: "{{ cifmw_snr_nhc_namespace }}"
+  register: snr_subscription_removal
+  failed_when: false
+  tags:
+    - cleanup
+    - snr-cleanup
+
+- name: Wait for ClusterServiceVersions to be removed
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ cifmw_snr_nhc_kubeconfig }}"
+    api_version: operators.coreos.com/v1alpha1
+    kind: ClusterServiceVersion
+    namespace: "{{ cifmw_snr_nhc_namespace }}"
+  register: csv_cleanup_check
+  until: csv_cleanup_check.resources | length == 0
+  retries: 15
+  delay: 10
+  failed_when: false
+  tags:
+    - cleanup
+
+- name: Remove OperatorGroup
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cifmw_snr_nhc_kubeconfig }}"
+    state: absent
+    api_version: operators.coreos.com/v1
+    kind: OperatorGroup
+    name: workload-availability-operator-group
+    namespace: "{{ cifmw_snr_nhc_namespace }}"
+  register: operator_group_removal
+  failed_when: false
+  tags:
+    - cleanup
+
+- name: Remove namespace (optional - controlled by variable)
+  kubernetes.core.k8s:
+    kubeconfig: "{{ cifmw_snr_nhc_kubeconfig }}"
+    state: absent
+    api_version: v1
+    kind: Namespace
+    name: "{{ cifmw_snr_nhc_namespace }}"
+  register: namespace_removal
+  failed_when: false
+  when: cifmw_snr_nhc_cleanup_namespace | default(false)
+  tags:
+    - cleanup
+    - namespace-cleanup
+
+- name: Display cleanup summary
+  ansible.builtin.debug:
+    msg: |
+      Cleanup Summary:
+      - NHC CR Removal: {{ 'Success' if nhc_cr_removal.changed else 'Skipped/Failed' }}
+      - NHC Subscription Removal: {{ 'Success' if nhc_subscription_removal.changed else 'Skipped/Failed' }}
+      - SNR Subscription Removal: {{ 'Success' if snr_subscription_removal.changed else 'Skipped/Failed' }}
+      - OperatorGroup Removal: {{ 'Success' if operator_group_removal.changed else 'Skipped/Failed' }}
+      - Namespace Removal: {{ 'Success' if namespace_removal.changed else 'Skipped/Not Requested' }}
+      - Cleanup completed for namespace: {{ cifmw_snr_nhc_namespace }}
+  tags:
+    - cleanup 

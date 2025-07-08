@@ -1,0 +1,40 @@
+---
+# Example playbook showing different ways to use the cleanup functionality
+# 
+# Usage examples:
+#
+# 1. Run only cleanup:
+#    ansible-playbook cleanup-example.yml --tags cleanup
+#
+# 2. Run cleanup + fresh install:
+#    ansible-playbook cleanup-example.yml -e cifmw_snr_nhc_cleanup_before_install=true
+#
+# 3. Run cleanup including namespace removal:
+#    ansible-playbook cleanup-example.yml -e cifmw_snr_nhc_cleanup_namespace=true --tags cleanup
+#
+# 4. Run only SNR cleanup:
+#    ansible-playbook cleanup-example.yml --tags snr-cleanup
+#
+# 5. Run only NHC cleanup:
+#    ansible-playbook cleanup-example.yml --tags nhc-cleanup
+
+- name: SNR/NHC Cleanup Example
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    # Override default values as needed
+    cifmw_snr_nhc_kubeconfig: "{{ lookup('env', 'KUBECONFIG') | default('~/.kube/config') }}"
+    cifmw_snr_nhc_namespace: "openshift-workload-availability"
+    
+    # Cleanup configuration
+    cifmw_snr_nhc_cleanup_before_install: false
+    cifmw_snr_nhc_cleanup_namespace: false
+  
+  tasks:
+    - name: Include SNR/NHC role
+      ansible.builtin.include_role:
+        name: cifmw_snr_nhc
+      tags:
+        - install
+        - cleanup 
