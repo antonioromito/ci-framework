@@ -1,5 +1,9 @@
 ---
+- name: Detect bootc Containerfile
+  ansible.builtin.import_tasks: bootc_containerfile.yml
+
 - name: Ensure bootc output directories exist
+  become: "{{ cifmw_edpm_build_images_via_rpm }}"
   ansible.builtin.file:
     path: "{{ item }}"
     state: directory
@@ -16,7 +20,7 @@
   register: cifmw_edpm_build_images_bootc_repo_files
 
 - name: Copy repo files for bootc build
-  become: true
+  become: "{{ cifmw_edpm_build_images_via_rpm }}"
   ansible.builtin.copy:
     src: "{{ item.path }}"
     dest: "{{ cifmw_edpm_build_images_bootc_repo_path }}/output/yum.repos.d/{{ item.path | basename }}"
@@ -33,13 +37,14 @@
   ansible.builtin.shell: >-
     buildah bud
     --network host
+    --format oci
     --build-arg EDPM_BASE_IMAGE={{ cifmw_edpm_build_images_bootc_base_image }}
     --build-arg RHSM_SCRIPT={{ cifmw_edpm_build_images_bootc_rhsm_script }}
     --build-arg FIPS={{ cifmw_edpm_build_images_bootc_fips }}
     --build-arg USER_PACKAGES={{ cifmw_edpm_build_images_bootc_user_packages }}
     --volume /etc/pki/ca-trust:/etc/pki/ca-trust:ro,Z
     --volume {{ cifmw_edpm_build_images_bootc_repo_path }}/output/yum.repos.d:/etc/yum.repos.d:rw,Z
-    -f ./Containerfile
+    -f ./{{ cifmw_edpm_build_images_bootc_containerfile }}
     -t localhost/edpm-bootc:{{ cifmw_edpm_build_images_tag }}
     . > {{ cifmw_edpm_build_images_basedir }}/logs/edpm_images/edpm_bootc_image_build.log
     2> {{ cifmw_edpm_build_images_basedir }}/logs/edpm_images/edpm_bootc_image_build_err.log
@@ -88,6 +93,7 @@
     mode: "0644"
 
 - name: Copy bootc qcow2 packaging helper files
+  become: "{{ cifmw_edpm_build_images_via_rpm }}"
   ansible.builtin.copy:
     src: "{{ item.src }}"
     dest: "{{ item.dest }}"
@@ -117,6 +123,8 @@
   ansible.builtin.set_fact:
     cifmw_edpm_build_images_bootc_output:
       images:
+        edpm-bootc:
+          image: "oci://{{ cifmw_edpm_build_images_bootc_repo }}:{{ cifmw_edpm_build_images_tag }}"
         edpm-bootc-qcow2:
           image: "{{ cifmw_edpm_build_images_bootc_repo }}:{{ cifmw_edpm_build_images_tag }}-qcow2"
     cacheable: true

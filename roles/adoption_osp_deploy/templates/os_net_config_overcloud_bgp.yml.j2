@@ -2,9 +2,7 @@
 network_config:
 - type: interface
   name: nic1
-  mtu: {{ _interface_mtu }}
-  use_dhcp: true
-  routes: []
+  use_dhcp: false
 - type: interface
   name: nic2
   mtu: {{ _interface_mtu }}

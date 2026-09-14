@@ -37,6 +37,11 @@
       ansible.builtin.set_fact:
         latest_open_pr: "{{ pr_list.json[0] }}"
 
+    - name: Make download_tools
+      ansible.builtin.include_role:
+        name: 'install_yamls_makes'
+        tasks_from: 'make_download_tools'
+
   tasks:
     - name: Build keystone-operator
       ansible.builtin.include_role:

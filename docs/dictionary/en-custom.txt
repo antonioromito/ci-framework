@@ -224,6 +224,7 @@ epel
 epyc
 etcd
 eth
+evallesp
 extraRPMs
 extraimages
 ezzmy
@@ -233,6 +234,7 @@ fci
 fdp
 fedoraproject
 fil
+Fernet
 filesystem
 fips
 firewalld
@@ -550,6 +552,7 @@ quickstart
 rabbitmq
 radosgw
 radvd
+randomizer
 raukadah
 rbd
 rdk
@@ -635,6 +638,7 @@ tcib
 tdciagigtlesa
 tempestconf
 testcases
+testconfig
 testenv
 testproject
 timestamper
@@ -675,6 +679,7 @@ v3oidcauthcode
 v3oidcclientcredentials
 v3oidcdeviceauthz
 v3oidcpassword
+vallespi
 vbibob
 vbmc
 vcgvuc
@@ -682,6 +687,7 @@ vcpu
 vcpus
 vda
 venv
+Vallespi
 vexxhost
 Velero
 virbr

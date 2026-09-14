@@ -95,6 +95,41 @@ with a message.
   CR file for the DataPlane resources deploy. Defaults to
   `cifmw_kustomize_deploy_kustomizations_dest_dir + dataplane.yaml`
 
+### osp-secret randomization
+
+- `cifmw_kustomize_deploy_osp_secrets_special_keys`: _(dict)_ Keys in the
+  `osp-secret` that require a specific value format rather than a plain
+  alphanumeric password. Each entry maps a key name to its generation
+  parameters:
+  - `type: "hex"` — generates `length` random bytes as a hex string
+    (output is `length * 2` hex characters).
+  - `type: "base64"` — generates `length` random characters, then
+    base64-encodes.
+
+  Default:
+
+  ```yaml
+  cifmw_kustomize_deploy_osp_secrets_special_keys:
+    HeatAuthEncryptionKey:
+      type: "hex"
+      length: 16
+  ```
+
+- `cifmw_kustomize_deploy_osp_secrets_skip_keys`: _(list)_ Keys to leave
+  untouched by the general randomizer. Use this for keys that are managed
+  by a dedicated mechanism (e.g. `BarbicanSimpleCryptoKEK` is handled
+  separately with a Fernet key).
+  Default: `[BarbicanSimpleCryptoKEK]`.
+
+After each `kustomize build`, if the rendered manifest contains an
+`osp-secret` Secret, all data keys are randomized using a two-tier
+resolution:
+
+1. **Live cluster** — if `osp-secret` already exists in the target namespace,
+   its values take priority (preserves secrets across redeploys).
+2. **Generate** — a new random value is produced (respecting the special-keys
+   format rules). Keys in the skip list are never touched.
+
 ## Automation specificities
 
 ### Timeouts
@@ -117,6 +152,13 @@ $ ansible-playbook deploy-edpm.yml \
   --skip-tags deploy_architecture_stage_0
 ```
 This would skip the first stage described in the automation file.
+
+During control-plane stages, `kustomize_deploy` ensures `BarbicanSimpleCryptoKEK`
+is present in generated `osp-secret` manifests before `oc apply`. The role
+looks up the live secret in the namespace declared on the manifest (for example
+`openstack2` in multi-namespace scenarios), reuses an existing cluster key when
+present, otherwise keeps keys from the kustomize output, otherwise generates a
+Fernet key at deploy time.
 
 ### Break point
 
