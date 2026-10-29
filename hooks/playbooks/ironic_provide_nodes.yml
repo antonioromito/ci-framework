@@ -30,6 +30,8 @@
         set -xe -o pipefail
         oc project {{ namespace }} > /dev/null
         oc rsh openstackclient \
+          openstack baremetal node list -f value -c "provision_state" 2>/dev/null || \
+        oc rsh openstackclient \
           openstack baremetal node list -f value -c "Provisioning State"
       until: '_os_out.stdout_lines | difference(["manageable"]) | length == 0'
       retries: 6
@@ -52,6 +54,7 @@
               oc rsh openstackclient openstack baremetal node inspect $node
             fi
           done
+      when: cifmw_ci_ironic_inspect_nodes | default(true) | bool
 
     - name: Wait for nodes to reach manageable state
       register: _os_out
@@ -59,10 +62,13 @@
         set -xe -o pipefail
         oc project {{ namespace }} > /dev/null
         oc rsh openstackclient \
+          openstack baremetal node list -f value -c "provision_state" 2>/dev/null || \
+        oc rsh openstackclient \
           openstack baremetal node list -f value -c "Provisioning State"
       until: '_os_out.stdout_lines | difference(["manageable"]) | length == 0'
       retries: 60
       delay: 10
+      when: cifmw_ci_ironic_inspect_nodes | default(true) | bool
 
     - name: Move all nodes to managed active state
       cifmw.general.ci_script:
@@ -87,6 +93,8 @@
       ansible.builtin.shell: |
         set -xe -o pipefail
         oc project {{ namespace }} > /dev/null
+        oc rsh openstackclient \
+          openstack baremetal node list -f value -c "provision_state" 2>/dev/null || \
         oc rsh openstackclient \
           openstack baremetal node list -f value -c "Provisioning State"
       until: '_os_out.stdout_lines | difference(["available"]) | length == 0'

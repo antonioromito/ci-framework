@@ -168,22 +168,78 @@
         (        cifmw_update_containers_watcher is defined and
         cifmw_update_containers_watcher | bool)
 
-    - name: Set update step to Starting the CI update sequence
+    - name: Derive bootc system image for update-system from update bootc image
+      # Strip the -qcow2 suffix: ironic provisions from the qcow2 container
+      # image, while `bootc switch` needs the bootc system container image.
+      when: cifmw_edpm_deploy_baremetal_bootc | default(false) | bool
+      ansible.builtin.set_fact:
+        cifmw_minor_update_bootc_image: >-
+          {{ cifmw_update_containers_edpm_image_url | regex_replace('-qcow2$', '') }}
+
+    - name: Get EDPM nodesets to patch with the bootc OS container image
+      when: cifmw_minor_update_bootc_image is defined
+      kubernetes.core.k8s_info:
+        kubeconfig: "{{ cifmw_openshift_kubeconfig }}"
+        api_key: "{{ cifmw_openshift_token | default(omit) }}"
+        context: "{{ cifmw_openshift_context | default(omit) }}"
+        api_version: dataplane.openstack.org/v1beta1
+        kind: OpenStackDataPlaneNodeSet
+        namespace: "{{ cifmw_install_yamls_defaults['NAMESPACE'] | default('openstack') }}"
+      register: edpm_nodeset_info
+
+    - name: Patch nodeset ansibleVars with edpm_update_system_bootc_os_container_image
+      # The update-system deployment is created without ansibleEE extraVars,
+      # so the var must reach the AEE job via nodeset group vars.
+      when: cifmw_minor_update_bootc_image is defined
+      loop: "{{ edpm_nodeset_info.resources | default([]) }}"
+      kubernetes.core.k8s:
+        state: patched
+        kubeconfig: "{{ cifmw_openshift_kubeconfig }}"
+        api_key: "{{ cifmw_openshift_token | default(omit) }}"
+        context: "{{ cifmw_openshift_context | default(omit) }}"
+        api_version: dataplane.openstack.org/v1beta1
+        kind: OpenStackDataPlaneNodeSet
+        name: "{{ item.metadata.name }}"
+        namespace: "{{ cifmw_install_yamls_defaults['NAMESPACE'] | default('openstack') }}"
+        definition:
+          spec:
+            nodeTemplate:
+              ansible:
+                ansibleVars:
+                  edpm_update_system_bootc_os_container_image: "{{ cifmw_minor_update_bootc_image }}"
+
+    - name: Set update step to Starting the services update sequence
       ansible.builtin.command:
         cmd: >
           {{ cifmw_update_artifacts_basedir }}/update_event.sh
-          Starting the CI update sequence
+          Starting the services update sequence
 
-    - name: Run make openstack_update_run
+    - name: Run make update_services
       vars:
-        make_openstack_update_run_env: "{{ cifmw_minor_update_env }}"
-        make_openstack_update_run_params:
+        make_update_services_env: "{{ cifmw_minor_update_env }}"
+        make_update_services_params:
           TIMEOUT: "1200s"
           OPENSTACK_VERSION: "{{ cifmw_minor_update_target_version }}"
-        make_openstack_update_run_dryrun: false
+        make_update_services_dryrun: false
       ansible.builtin.include_role:
         name: 'install_yamls_makes'
-        tasks_from: 'make_openstack_update_run'
+        tasks_from: 'make_update_services'
+
+    - name: Set update step to Starting the system update sequence
+      ansible.builtin.command:
+        cmd: >
+          {{ cifmw_update_artifacts_basedir }}/update_event.sh
+          Starting the system update sequence
+
+    - name: Run make update_system
+      vars:
+        make_update_system_env: "{{ cifmw_minor_update_env }}"
+        make_update_system_params:
+          TIMEOUT: "1200s"
+        make_update_system_dryrun: false
+      ansible.builtin.include_role:
+        name: 'install_yamls_makes'
+        tasks_from: 'make_update_system'
 
     - name: Set update step to Verifying update completion
       ansible.builtin.command:

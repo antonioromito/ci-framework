@@ -5,7 +5,7 @@ Execute tests via the [test-operator](https://openstack-k8s-operators.github.io/
 ## Generic parameters
 <!-- START GENERIC_PARAMETERS -->
 * `cifmw_test_operator_artifacts_basedir`: (String) Directory where we will have all test-operator related files. Default value: `{{ cifmw_basedir }}/tests/test_operator` which defaults to `~/ci-framework-data/tests/test_operator`
-* `cifmw_test_operator_bundle`: (String) Full name of container image with bundle that contains the test-operator. Default value: ``
+* `cifmw_test_operator_bundle`: (String) Full name of container image with bundle that contains the test-operator. Default value: `''`
 * `cifmw_test_operator_clean_last_run`: (Bool) Delete all resources created by the previous run at the beginning of the role. Default value: `false`
 * `cifmw_test_operator_cleanup`: (Bool) Delete all resources created by the role at the end of the testing. Default value: `false`
 * `cifmw_test_operator_controller_ip`: (String) An ip address of the controller node. Default value: `{{ ansible_default_ipv4.address | default("") }}`
@@ -25,8 +25,8 @@ Execute tests via the [test-operator](https://openstack-k8s-operators.github.io/
 * `cifmw_test_operator_logs_image`: (String) Image that should be used to collect logs from the pods spawned by the test-operator. Default value: `quay.io/quay/busybox`
 * `cifmw_test_operator_namespace`: (String) Namespace inside which all the resources are created. Default value: `openstack`
 * `cifmw_test_operator_node_selector`: (Dict) `nodeSelector` value that is applied to all pods spawned by the test-operator and to the test-operator-controller-manager and test-operator-logs pods. Default value: `{}`
-* `cifmw_test_operator_privileged`: (Boolean) Spawn the test pods with `allowPrivilegedEscalation: true` and default linux capabilities. This is required for certain test-operator functionalities to work properly (e.g.: `extraRPMs`, certain set of tobiko tests). Default value: `true`
-* `cifmw_test_operator_selinux_level`: (String) Specify SELinux level that should be used for pods spawned with the test-operator. Note, that `cifmw_test_operator_privileged: true` must be set when this parameter has non-empty value. Default value: `s0:c478,c978`
+* `cifmw_test_operator_privileged`: (Boolean) Spawn the test pods with `allowPrivilegedEscalation: true` and default linux capabilities. This is required for certain test-operator functionalities to work properly (e.g.: `extraRPMs`, certain set of tobiko tests). Default value: `false`
+* `cifmw_test_operator_selinux_level`: (String) SELinux level for pods spawned by test-operator. Note: Setting a custom value requires `cifmw_test_operator_privileged: true`. Default value: `{{ 's0:c478,c978' if cifmw_test_operator_privileged | bool else '' }}`
 * `cifmw_test_operator_stages`: (List) List of dictionaries defining the stages that should be used in the test operator role. List items options are:
   * `name`: (String) The name of the stage. The name must be unique.
   * `type`: (String) The framework name you would like to call, currently the options are: tempest, ansibletest, horizontest, tobiko.
@@ -58,11 +58,10 @@ Execute tests via the [test-operator](https://openstack-k8s-operators.github.io/
 * `cifmw_test_operator_tempest_exclude_list_merge`: (Bool) When set to true, merges tests from both `list_skipped.yml` and `cifmw_test_operator_tempest_exclude_list` into a single combined exclusion list. Default value: `false`
 * `cifmw_test_operator_tempest_expected_failures_list`: (String) List of tests for which failures will be ignored. Default value: `''`
 * `cifmw_test_operator_tempest_external_plugin`: (List) List of dicts describing any external plugin to be installed. The dictionary contains a repository, changeRepository (optional) and changeRefspec (optional). Default value: `[]`
-* `cifmw_test_operator_tempest_extra_configmaps_mounts`: WARNING: This parameter will be deprecated! Please use `cifmw_test_operator_tempest_extra_mounts` parameter instead. (List) A list of configmaps that should be mounted into the tempest test pods. Default value: `[]`
 * `cifmw_test_operator_tempest_extra_images`: (List) A list of images that should be uploaded to OpenStack before the tests are executed. The value is passed to extraImages parameter in the [Tempest CR](https://openstack-k8s-operators.github.io/test-operator/crds.html#tempest-custom-resource). Default value: `[]`
 * `cifmw_test_operator_tempest_extra_mounts`: (List) A list of additional volume mounts for the tempest test pods. Each item specifies a volume name, mount path, and other mount properties. Default value: `[]`
 * `cifmw_test_operator_tempest_extra_rpms`: (List) . A list of URLs that point to RPMs that should be installed before the execution of tempest. Note that this parameter has no effect when `cifmw_test_operator_tempest_external_plugin` is used. Default value: `[]`
-* `cifmw_test_operator_tempest_image`: (String) Tempest image to be used. Default value: `{{ stage_vars_dict.cifmw_test_operator_tempest_registry }}/{{ stage_vars_dict.cifmw_test_operator_tempest_namespace }}/{{ stage_vars_dict.cifmw_test_operator_tempest_container }}`
+* `cifmw_test_operator_tempest_image`: (String) Tempest image to be used. Default value: `{{ stage_vars_dict.cifmw_test_operator_tempest_registry }}/{{ stage_vars_dict.cifmw_test_operator_tempest_namespace }}/{{ stage_vars_dict.cifmw_test_operator_tempest_container }}`. The Tempest CR's `containerImage` field is only populated when this (or `cifmw_test_operator_tempest_image_tag`, `cifmw_test_operator_tempest_registry`, `cifmw_test_operator_tempest_namespace` or `cifmw_test_operator_tempest_container`) is explicitly overridden; otherwise `containerImage` is left unset so the Tempest operator's own default image is used.
 * `cifmw_test_operator_tempest_image_tag`: (String) Tag for the `cifmw_test_operator_tempest_image`. Default value: `{{ cifmw_test_operator_default_image_tag }}`
 * `cifmw_test_operator_tempest_include_list`: (String) List of tests to be executed. Setting this will not use the `list_allowed` plugin. Default value: `''`
 * `cifmw_test_operator_tempest_name`: (String) Value used in the `Tempest.Metadata.Name` field. The value specifies the name of some resources spawned by the test-operator role. Default value: `tempest-tests`
@@ -105,7 +104,7 @@ Default value: {}
 * `cifmw_test_operator_tobiko_openstack_cmd`: (String) Openstack command is used by tobiko to cleanup resources. Default value: `oc -n {{ cifmw_openstack_namespace }} exec openstackclient -- openstack`
 * `cifmw_test_operator_tobiko_override_conf`: (Dict) Overrides the default configuration from `cifmw_test_operator_tobiko_default_conf` that is used to generate the tobiko.conf file. Default value: `{}`
 * `cifmw_test_operator_tobiko_patch`: (Dict) A specific Git patch to apply to the Tobiko repository. This feature expects both `repository` and `refspec` to be defined. Default value: `{}`
-* `cifmw_test_operator_tobiko_prevent_create`: (Boolean) Sets the value of the env variable `TOBIKO_PREVENT_CREATE` that specifies whether tobiko scenario tests create new resources or expect that those resource had been created before. Default to `null`. In case of `null` value, `TOBIKO_PREVENT_CREATE` is not set (tobiko tests create new resources). Default value: ``
+* `cifmw_test_operator_tobiko_prevent_create`: (Boolean) Sets the value of the env variable `TOBIKO_PREVENT_CREATE` that specifies whether tobiko scenario tests create new resources or expect that those resource had been created before. Default to `null`. In case of `null` value, `TOBIKO_PREVENT_CREATE` is not set (tobiko tests create new resources). Default value: `null`
 * `cifmw_test_operator_tobiko_pytest_addopts`: (String) `PYTEST_ADDOPTS` env variable with input pytest args. Example: `-m <markers> --maxfail <max-failed-tests> --skipregex <regex>`. Default value: `null`. In case of `null` value, `PYTEST_ADDOPTS` is not set (tobiko tests are executed without any extra pytest options).
 * `cifmw_test_operator_tobiko_registry`: (String) The registry where to pull tobiko container. Default value: `{{ cifmw_test_operator_default_registry }}`
 * `cifmw_test_operator_tobiko_resources`: (Dict) A dictionary that specifies resources (cpu, memory) for the test pods. When kept untouched it defaults to the resource limits specified on the test-operator side. Default value: `{}`
@@ -119,18 +118,17 @@ Default value: {}
 
 ## AnsibleTest specific parameters
 <!-- START ANSIBLETEST_SPECIFIC_PARAMETERS -->
-* `cifmw_test_operator_ansibletest_ansible_collection`: (String) Extra ansible collections to install in addition to the ones that exist in the requirements.yaml. Default value: ``
-* `cifmw_test_operator_ansibletest_ansible_extra_vars`: (String) string to pass parameters to ansible. Default value: ``
-* `cifmw_test_operator_ansibletest_ansible_git_branch`: (String) Git branch to checkout from the repo. Default value: ``
-* `cifmw_test_operator_ansibletest_ansible_git_repo`: (String) Git repo to clone into container. Default value: ``
-* `cifmw_test_operator_ansibletest_ansible_inventory`: (String) string that contains the inventory file content. Default value: ``
-* `cifmw_test_operator_ansibletest_ansible_playbook_path`: (String) Path to ansible playbook. Default value: ``
-* `cifmw_test_operator_ansibletest_ansible_var_files`: (String) interface to create ansible var files. Default value: ``
+* `cifmw_test_operator_ansibletest_ansible_collection`: (String) Extra ansible collections to install in addition to the ones that exist in the requirements.yaml. Default value: `''`
+* `cifmw_test_operator_ansibletest_ansible_extra_vars`: (String) string to pass parameters to ansible. Default value: `''`
+* `cifmw_test_operator_ansibletest_ansible_git_branch`: (String) Git branch to checkout from the repo. Default value: `''`
+* `cifmw_test_operator_ansibletest_ansible_git_repo`: (String) Git repo to clone into container. Default value: `''`
+* `cifmw_test_operator_ansibletest_ansible_inventory`: (String) string that contains the inventory file content. Default value: `''`
+* `cifmw_test_operator_ansibletest_ansible_playbook_path`: (String) Path to ansible playbook. Default value: `''`
+* `cifmw_test_operator_ansibletest_ansible_var_files`: (String) interface to create ansible var files. Default value: `''`
 * `cifmw_test_operator_ansibletest_compute_ssh_key_secret_name`: (String) The name of the k8s secret that contains an ssh key for computes. Default value: `dataplane-ansible-ssh-private-key-secret`
 * `cifmw_test_operator_ansibletest_config`: Definition of AnsibleTest CRD instance that is passed to the test-operator (see [the test-operator documentation](https://openstack-k8s-operators.github.io/test-operator/crds.html)). Default value: See defaults in [main.yml](https://github.com/openstack-k8s-operators/ci-framework/blob/main/roles/test_operator/defaults/main.yml)
 * `cifmw_test_operator_ansibletest_container`: (String) Name of the ansibletests container. Default value: `openstack-ansible-tests`
 * `cifmw_test_operator_ansibletest_debug`: (Bool) Run ansible playbook with -vvvv. Default value: `false`
-* `cifmw_test_operator_ansibletest_extra_configmaps_mounts`: WARNING: This parameter will be deprecated! Please use `cifmw_test_operator_ansibletest_extra_mounts` parameter instead. (List) Extra configmaps for mounting in the pod. Default value: `[]`
 * `cifmw_test_operator_ansibletest_extra_mounts`: (List) A list of additional volume mounts for the ansibletest test pods. Each item specifies a volume name, mount path, and other mount properties. Default value: `[]`
 * `cifmw_test_operator_ansibletest_image`: (String) Ansibletests image to be used. Default value: `{{ stage_vars_dict.cifmw_test_operator_ansibletest_registry }}/{{ stage_vars_dict.cifmw_test_operator_ansibletest_namespace }}/{{ stage_vars_dict.cifmw_test_operator_ansibletest_container }}`
 * `cifmw_test_operator_ansibletest_image_tag`: (String) Ansibletests image to be used. Default value: `{{ cifmw_test_operator_default_image_tag }}`
@@ -141,7 +139,7 @@ Default value: {}
 * `cifmw_test_operator_ansibletest_registry`: (String) The registry where to pull ansibletests container. Default value: `{{ cifmw_test_operator_default_registry }}`
 * `cifmw_test_operator_ansibletest_resources`: (Dict) A dictionary that specifies resources (cpu, memory) for the test pods. When kept untouched it defaults to the resource limits specified on the test-operator side. Default value: `{}`
 * `cifmw_test_operator_ansibletest_workflow`: (List) A parameter that contains a workflow definition. Default value: `[]`
-* `cifmw_test_operator_ansibletest_workload_ssh_key_secret_name`: (String) The name of the k8s secret that contains an ssh key for the ansible workload. Default value: ``
+* `cifmw_test_operator_ansibletest_workload_ssh_key_secret_name`: (String) The name of the k8s secret that contains an ssh key for the ansible workload. Default value: `''`
 <!-- END ANSIBLETEST_SPECIFIC_PARAMETERS -->
 
 ## Horizontest specific parameters

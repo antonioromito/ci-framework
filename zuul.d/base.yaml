@@ -27,9 +27,13 @@
 - job:
     name: openstack-k8s-operators-content-provider
     parent: cifmw-base-minimal
-    nodeset: centos-stream-9
+    nodeset: centos-stream-9-content-provider
     timeout: 2700
+    semaphores: content-provider
     irrelevant-files: &ir_files
+      - ^\.pr_agent\.toml$
+      - ^best_practices\.md$
+      - ^REVIEW\.md$
       - .*/*.md
       - ^.github/.*$
       - ^LICENSE$
@@ -208,6 +212,12 @@
               tenant:
                 ip: 172.19.0.100
                 config_nm: false
+
+- job:
+    name: cifmw-podified-multinode-edpm-base-crc-centos-10
+    parent: cifmw-podified-multinode-edpm-base-crc
+    nodeset: centos-10-medium-centos-10-crc-cloud-ocp-4-22-1-3xl
+
 #
 # Base jobs using ci-bootstrap layout
 #

@@ -52,9 +52,19 @@ cifmw_update_cleanup: true
 cifmw_update_openstack_update_kpatch: false
 
 cifmw_update_reboot_test: false
+cifmw_update_evacuate_vms_synchronously: false
+cifmw_update_vm_migration_wait_retries: 720
 cifmw_update_ansible_ssh_private_key_file: >-
   "{{ ansible_ssh_private_key_file | default(ansible_user_dir ~ '/.ssh/id_cifw') }}"
 cifmw_update_wait_retries_reboot: 60
+cifmw_update_wait_retries_sanity: 30
+
+# Ceph MON IP re-application after compute reboot (for HCI scenarios)
+cifmw_update_reapply_ceph_mon_ips: false
+
+# Ceph mgr failover after compute reboot (for HCI adoption scenarios).
+cifmw_update_failover_ceph_mgr: false
+cifmw_update_ceph_mgr_failover_wait: 60
 
 cifmw_update_ping_test: false
 cifmw_update_create_volume: false

@@ -33,6 +33,10 @@ networks.
   Defaults to 7200, 2 hours.
 * `cifmw_devscripts_dry_run` (bool) If enabled, the workflow is evaluated.
 * `cifmw_devscripts_src_dir` (str) The parent folder of dev-scripts repository.
+* `cifmw_devscripts_repo` (str) URL of the dev-scripts repository.
+* `cifmw_devscripts_repo_branch` (str) Git ref to check out. Defaults to the
+  CI-validated commit `9116d288bb2885a29d3c9c9c4bf422305bef370d`. Callers
+  may override it with another tested branch, tag, or commit.
 * `cifmw_devscripts_remove_libvirt_net_default` (bool) Remove the default
   virtual network. Defaults to `false`.
 * `cifmw_devscripts_enable_ocp_nodes_host_routing` (bool) Enable routing via
@@ -41,6 +45,14 @@ networks.
   the OpenShift nodes having role as `worker`. Defaults to `false`.
 * `cifmw_devscripts_enable_multipath_on_ocp_nodes` (bool) Enable multipath
   services on the OpenShift nodes. Defaults to `false`.
+* `cifmw_devscripts_limit_ocp_prometheus_storage` (bool) Install OpenShift with
+  a `cluster-monitoring-config` that bounds the platform Prometheus storage. Its
+  TSDB lives on the master root disk and, with the default 15d retention and no
+  size limit, can fill it on long-lived clusters. Defaults to `false`.
+* `cifmw_devscripts_ocp_prometheus_retention` (str) Platform Prometheus
+  retention time. Defaults to `24h`.
+* `cifmw_devscripts_ocp_prometheus_retention_size` (str) Platform Prometheus
+  maximum TSDB size. Defaults to `10GB`.
 * `cifmw_devscripts_create_logical_volume` (bool) Create a logical volume with
   the name cinder-volumes on all OCP nodes. Defaults to `false`.
 * `cifmw_devscripts_host_bm_net_ip_addr` (str) The IP address of the host to be
@@ -79,6 +91,32 @@ You **must** provide either `cifmw_manage_secrets_citoken_file` OR
 `cifmw_manage_secrets_citoken_content`.
 
 If you provide neither, or both, it will fail.
+
+##### Token-free (GA) deploys
+
+dev-scripts normally requires a valid `app.ci` `CI_TOKEN`: `validation.sh`
+aborts on an empty token, and `utils.sh` logs in to `app.ci` to fetch registry
+credentials for the pull-secret. For a **GA** deploy this token is not needed to
+pull images -- they come from the `pull-secret` (quay.io / registry.redhat.io),
+not from `app.ci`.
+
+dev-scripts already provides a documented token-free mode: `OPENSHIFT_CI=true`
+(see `config_example.sh`). It skips both the `CI_TOKEN` validation and the
+`app.ci` pull-secret login. Enable it via the config overrides and pass an empty
+token:
+
+```yaml
+cifmw_devscripts_config_overrides:
+  openshift_ci: "true"          # dev-scripts token-free mode
+cifmw_manage_secrets_citoken_content: ''
+```
+
+`OPENSHIFT_CI=true` has one side effect that does not suit a single-host
+reproducer: it forces an NFS-backed **persistent** image registry, but that NFS
+storage is not provisioned here. Set
+`cifmw_devscripts_skip_persistent_imageregistry: true` to patch that one
+dev-scripts line so the in-cluster registry stays on `emptyDir`. Defaults to
+`false`, keeping the upstream behaviour.
 
 ### Supported keys in cifmw_devscripts_config_overrides
 

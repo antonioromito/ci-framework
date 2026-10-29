@@ -1,7 +1,7 @@
 ---
 - name: Extract short hostname from FQDN
   ansible.builtin.set_fact:
-    cifmw_update_hypervisor_short_name: "{{ hypervisor.split('.')[0] }}"
+    cifmw_update_hypervisor_short_name: "{{ cifmw_update_target_hypervisor.split('.')[0] }}"
 
 - name: Display current stage
   ansible.builtin.debug:
@@ -18,12 +18,12 @@
     PATH: "{{ cifmw_path | default(ansible_env.PATH) }}"
   ansible.builtin.shell: >-
     set -o pipefail;
-    {{ cifmw_update_openstack_cmd }} server list --all --host {{ hypervisor }} -f json
+    {{ cifmw_update_openstack_cmd }} server list --all --host {{ cifmw_update_target_hypervisor }} -f json
     | jq -r -c '.[] | select(.Status | contains("ACTIVE") or contains("PAUSED")) | .ID'
   register: active_vms
   changed_when: false
 
-- name: Evacuate VMs if they are running
+- name: Evacuate VMs asynchronously if they are running
   environment:
     KUBECONFIG: "{{ cifmw_openshift_kubeconfig }}"
     PATH: "{{ cifmw_path | default(ansible_env.PATH) }}"
@@ -33,11 +33,40 @@
     {% if 'ceph' not in storage_backend.stdout %}
     --block-migrate
     {% endif %}
-    {{ hypervisor }}"
+    {{ cifmw_update_target_hypervisor }}"
   when:
     - active_vms.stdout != ''
     - hypervisor_hostnames | length > 1
+    - not cifmw_update_evacuate_vms_synchronously | bool
   changed_when: true
+
+- name: Order active VMs for synchronous evacuation
+  environment:
+    KUBECONFIG: "{{ cifmw_openshift_kubeconfig }}"
+    PATH: "{{ cifmw_path | default(ansible_env.PATH) }}"
+  ansible.builtin.shell: >-
+    set -o pipefail;
+    {{ cifmw_update_openstack_cmd }} server list --all --host {{ cifmw_update_target_hypervisor }}
+    -f json -c ID -c Status -c "Created At"
+    | jq -r -c '[.[] | select(.Status |
+    contains("ACTIVE") or contains("PAUSED"))]
+    | sort_by(.["Created At"])[] | .ID'
+  register: cifmw_update_ordered_active_vms
+  changed_when: false
+  when:
+    - active_vms.stdout != ''
+    - hypervisor_hostnames | length > 1
+    - cifmw_update_evacuate_vms_synchronously | bool
+
+- name: Evacuate VMs synchronously if they are running
+  ansible.builtin.include_tasks: migrate_instance_from_hypervisor.yml
+  loop: "{{ cifmw_update_ordered_active_vms.stdout_lines }}"
+  loop_control:
+    loop_var: cifmw_update_instance_id
+  when:
+    - active_vms.stdout != ''
+    - hypervisor_hostnames | length > 1
+    - cifmw_update_evacuate_vms_synchronously | bool
 
 - name: Wait for compute node to get quiesced
   environment:
@@ -45,12 +74,12 @@
     PATH: "{{ cifmw_path | default(ansible_env.PATH) }}"
   ansible.builtin.shell: >-
     set -o pipefail;
-    {{ cifmw_update_openstack_cmd }} server list --all --host {{ hypervisor }} -f json
+    {{ cifmw_update_openstack_cmd }} server list --all --host {{ cifmw_update_target_hypervisor }} -f json
     | jq -r -c '[.[] | select(.Status |
     contains("ACTIVE") or contains("PAUSED") or contains("MIGRATING"))]
     | length'
   register: compute_node_instances
-  until: compute_node_instances.stdout.find("0") > -1
+  until: compute_node_instances.rc == 0 and compute_node_instances.stdout == '0'
   retries: 30
   delay: 5
   when:
@@ -60,15 +89,104 @@
 - name: Reboot the hypervisors using CR
   ansible.builtin.include_tasks: reboot_hypervisor_using_cr.yml
 
+- name: Re-apply Ceph MON IPs after compute reboot
+  when: cifmw_update_reapply_ceph_mon_ips | default(false)
+  block:
+    - name: Extract Ceph storage-net IPs from os-net-config
+      ansible.builtin.shell: >-
+        set -o pipefail;
+        ssh -i {{ cifmw_update_ansible_ssh_private_key_file }}
+        -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no
+        {{ cifmw_update_hypervisor_short_name }}
+        "grep -oE '{{ cifmw_update_ceph_storage_net_prefix | regex_escape }}\.[0-9]+/[0-9]+'
+        /etc/os-net-config/config.yaml | sort -u"
+      register: cifmw_update_ceph_mon_ips
+      changed_when: false
+      failed_when: false
+
+    - name: Apply Ceph MON IPs to storage vlan interface
+      when:
+        - cifmw_update_ceph_mon_ips.rc == 0
+        - cifmw_update_ceph_mon_ips.stdout_lines | length > 0
+      ansible.builtin.command: >-
+        ssh -i {{ cifmw_update_ansible_ssh_private_key_file }}
+        -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no
+        {{ cifmw_update_hypervisor_short_name }}
+        "sudo ip addr add {{ item }} dev vlan{{ cifmw_update_ceph_storage_vlan_id }}"
+      loop: "{{ cifmw_update_ceph_mon_ips.stdout_lines }}"
+      changed_when: true
+      failed_when: false
+
+- name: Fail over the Ceph mgr after reboot when the active mgr is stray
+  when: cifmw_update_failover_ceph_mgr | default(false)
+  block:
+    - name: Get the current Ceph health details
+      ansible.builtin.command: >-
+        ssh -i {{ cifmw_update_ansible_ssh_private_key_file }}
+        -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no
+        {{ cifmw_update_hypervisor_short_name }}
+        "sudo cephadm shell -- ceph health detail -f json"
+      register: cifmw_update_ceph_health
+      changed_when: false
+      failed_when: false
+
+    - name: Get the active Ceph mgr
+      ansible.builtin.command: >-
+        ssh -i {{ cifmw_update_ansible_ssh_private_key_file }}
+        -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no
+        {{ cifmw_update_hypervisor_short_name }}
+        "sudo cephadm shell -- ceph mgr stat -f json"
+      register: cifmw_update_ceph_mgr_stat
+      changed_when: false
+      failed_when: false
+
+    - name: Fail the active Ceph mgr when it is the stray daemon
+      when:
+        - cifmw_update_ceph_health.rc == 0
+        - cifmw_update_ceph_mgr_stat.rc == 0
+        - >-
+          ('stray daemon mgr.' ~
+          ((cifmw_update_ceph_mgr_stat.stdout | default('{}', true) | from_json).active_name | default('')) ~
+          ' on host ') in cifmw_update_ceph_health.stdout
+      block:
+        - name: Promote a standby Ceph mgr
+          ansible.builtin.command: >-
+            ssh -i {{ cifmw_update_ansible_ssh_private_key_file }}
+            -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no
+            {{ cifmw_update_hypervisor_short_name }}
+            "sudo cephadm shell -- ceph mgr fail"
+          changed_when: true
+
+        - name: Wait for the promoted mgr to become active and collect stats
+          ansible.builtin.pause:
+            seconds: "{{ cifmw_update_ceph_mgr_failover_wait }}"
+
+        - name: Re-check the Ceph cluster status after the failover
+          ansible.builtin.command: >-
+            ssh -i {{ cifmw_update_ansible_ssh_private_key_file }}
+            -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=no
+            {{ cifmw_update_hypervisor_short_name }}
+            "sudo cephadm shell -- ceph -s"
+          register: cifmw_update_ceph_status_after
+          changed_when: false
+          failed_when: false
+
+        - name: Report the Ceph cluster status after the failover
+          ansible.builtin.debug:
+            msg: "{{ cifmw_update_ceph_status_after.stdout_lines | default([]) }}"
+
 - name: Perform sanity checks post-reboot
   ansible.builtin.include_tasks: reboot_hypervisor_sanity_checks.yml
   vars:
-    current_hypervisor: "{{ hypervisor }}"
+    current_hypervisor: "{{ cifmw_update_target_hypervisor }}"
 
 - name: Display current stage
   ansible.builtin.debug:
     msg: "Migrate back {{ item }} to {{ cifmw_update_hypervisor_short_name }}."
-  with_items: "{{ active_vms.stdout_lines }}"
+  with_items: >-
+    {{ (cifmw_update_ordered_active_vms.stdout_lines | default([]))
+       if cifmw_update_evacuate_vms_synchronously | bool
+       else active_vms.stdout_lines }}
 
 - name: Migrate back VMs post-reboot
   environment:
@@ -81,14 +199,17 @@
     {% if 'ceph' not in storage_backend.stdout %}
     --block-migrate
     {% endif %}
-    {{ item }} {{ hypervisor }}";
+    {{ item }} {{ cifmw_update_target_hypervisor }}";
     {{ cifmw_update_openstack_cmd }} server show {{ item }} -f json |
     jq -r -c '. | .["OS-EXT-SRV-ATTR:host"]'
   register: instance_migration_result
-  until: instance_migration_result.stdout.find(hypervisor) > -1
+  until: instance_migration_result.stdout.find(cifmw_update_target_hypervisor) > -1
   retries: 30
   delay: 5
-  with_items: "{{ active_vms.stdout_lines }}"
+  with_items: >-
+    {{ (cifmw_update_ordered_active_vms.stdout_lines | default([]))
+       if cifmw_update_evacuate_vms_synchronously | bool
+       else active_vms.stdout_lines }}
   when:
     - active_vms.stdout != ''
     - hypervisor_hostnames | length > 1

@@ -1,0 +1,10 @@
+---
+# Mainly used to override the defaults set in .config/molecule/
+log: true
+
+provisioner:
+  name: ansible
+  log: true
+  env:
+    ANSIBLE_STDOUT_CALLBACK: default
+    ANSIBLE_CALLBACK_RESULT_FORMAT: yaml
